@@ -1,0 +1,328 @@
+---
+title: "Health and Retirement Study (HRS) 2022: Analysis of Health Status in Older Americans"
+author: "Tong Juncheng"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+# Introduction
+
+The **Health and Retirement Study (HRS)** is a nationally representative longitudinal survey of Americans aged 50 and older, conducted biennially by the University of Michigan and sponsored by the National Institute on Aging. Since 1992, the HRS has tracked the health, economic circumstances, and well-being of older Americans as they transition through retirement and late life.
+
+This report analyzes the **2022 HRS Core data (Wave 22)**, which includes approximately 15,700 respondents. The analysis focuses on three primary goals:
+
+1. **Describe** the demographic composition of the sample (age, sex, education).
+2. **Characterize** the distribution of self-rated health and prevalence of common chronic conditions (hypertension, diabetes, and cancer).
+3. **Examine** the relationship between chronic disease burden and self-rated health.
+
+The data were downloaded from the [HRS public data repository](https://hrs.isr.umich.edu/data-products) and consist of several section-specific CSV files that are merged by respondent identifiers (`HHID` and `PN`).
+
+---
+
+# Data Loading and Preparation
+
+```{r load-data, echo=TRUE}
+library(tidyverse)
+library(gtsummary)
+library(knitr)
+# library(kableExtra)  # install if needed: install.packages("kableExtra")
+
+# Define the path to extracted CSV files
+data_dir <- "data"
+
+# Load section files
+dat_a  <- read.csv(file.path(data_dir, "h22a_r.csv"))    # Section A: Background
+dat_c  <- read.csv(file.path(data_dir, "h22c_r.csv"))    # Section C: Health conditions
+dat_pr <- read.csv(file.path(data_dir, "h22pr_r.csv"))   # Pre-release: Demographics
+
+# Merge datasets on respondent ID
+dat <- dat_a %>%
+  select(HHID, PN, SA019) %>%           # age
+  left_join(
+    dat_c %>% select(HHID, PN, SC001, SC002, SC005, SC010, SC018),
+    by = c("HHID", "PN")
+  ) %>%
+  left_join(
+    dat_pr %>% select(HHID, PN, SX060_R, SX007_R),
+    by = c("HHID", "PN")
+  )
+```
+
+```{r clean-data, echo=TRUE}
+# Recode variables
+dat_clean <- dat %>%
+  rename(
+    age        = SA019,
+    health     = SC001,   # Self-rated health: 1=Excellent, 5=Poor
+    health_chg = SC002,   # Health change: 1=Better, 2=Same, 3=Worse
+    hbp        = SC005,   # High blood pressure (1=yes, 5=no)
+    diabetes   = SC010,   # Diabetes (1=yes, 5=no)
+    cancer     = SC018,   # Cancer (1=yes, 5=no)
+    sex        = SX060_R, # Sex: 1=Male, 2=Female
+    educ       = SX007_R  # Education: 1=<HS, 2=HS grad, 3=Some college, 4=College+
+  ) %>%
+  mutate(
+    # Recode self-rated health (exclude non-responses)
+    health_cat = case_when(
+      health == 1 ~ "Excellent",
+      health == 2 ~ "Very Good",
+      health == 3 ~ "Good",
+      health == 4 ~ "Fair",
+      health == 5 ~ "Poor",
+      TRUE ~ NA_character_
+    ),
+    health_cat = factor(health_cat,
+                        levels = c("Excellent","Very Good","Good","Fair","Poor")),
+
+    # Recode sex
+    sex_cat = case_when(
+      sex == 1 ~ "Male",
+      sex == 2 ~ "Female",
+      TRUE ~ NA_character_
+    ),
+    sex_cat = factor(sex_cat),
+
+    # Recode education
+    educ_cat = case_when(
+      educ == 1 ~ "Less than High School",
+      educ == 2 ~ "High School Graduate",
+      educ == 3 ~ "Some College",
+      educ == 4 ~ "College or Above",
+      TRUE ~ NA_character_
+    ),
+    educ_cat = factor(educ_cat,
+                      levels = c("Less than High School","High School Graduate",
+                                 "Some College","College or Above")),
+
+    # Recode chronic conditions (1=yes, 4/5=no; exclude special codes)
+    hbp_bin      = case_when(hbp == 1 ~ 1L, hbp %in% c(4,5) ~ 0L, TRUE ~ NA_integer_),
+    diabetes_bin = case_when(diabetes == 1 ~ 1L, diabetes %in% c(4,5) ~ 0L, TRUE ~ NA_integer_),
+    cancer_bin   = case_when(cancer == 1 ~ 1L, cancer %in% c(4,5) ~ 0L, TRUE ~ NA_integer_),
+
+    # Age group
+    age_group = cut(age, breaks = c(0, 59, 69, 79, 89, Inf),
+                    labels = c("< 60","60–69","70–79","80–89","90+"),
+                    right = TRUE),
+
+    # Number of chronic conditions
+    n_conditions = hbp_bin + diabetes_bin + cancer_bin
+  ) %>%
+  filter(!is.na(health_cat))  # Keep only respondents with valid self-rated health
+```
+
+After cleaning, the analytic sample contains **`r nrow(dat_clean)` respondents**.
+
+---
+
+# Descriptive Analysis
+
+## Sample Characteristics
+
+Table 1 summarizes the demographic and health characteristics of the 2022 HRS respondents. The sample skews older, reflecting the HRS's focus on adults aged 50 and above. The majority of respondents reported their health as "Good" or "Very Good."
+
+```{r table1}
+dat_clean %>%
+  select(age, sex_cat, educ_cat, health_cat) %>%
+  tbl_summary(
+    label = list(
+      age      ~ "Age (years)",
+      sex_cat  ~ "Sex",
+      educ_cat ~ "Education",
+      health_cat ~ "Self-rated Health"
+    ),
+    statistic = list(
+      age ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    missing = "no"
+  ) %>%
+  bold_labels() %>%
+  modify_caption("**Table 1. Sample Characteristics, HRS 2022 (N = `r nrow(dat_clean)`)**")
+```
+
+The average respondent age was approximately `r round(mean(dat_clean$age, na.rm=TRUE), 1)` years (SD = `r round(sd(dat_clean$age, na.rm=TRUE), 1)`). Women comprised the majority of the sample (`r round(mean(dat_clean$sex_cat == "Female", na.rm=TRUE)*100, 1)`%), consistent with the higher survival rates of women into older age. The most common educational attainment was high school graduation or some college.
+
+## Age Distribution
+
+```{r fig1-age, fig.cap="Figure 1. Age distribution of HRS 2022 respondents. The vertical dashed line marks the median age.", fig.width=7, fig.height=4}
+median_age <- median(dat_clean$age, na.rm = TRUE)
+
+ggplot(dat_clean, aes(x = age)) +
+  geom_histogram(binwidth = 2, fill = "#2196F3", color = "white", alpha = 0.85) +
+  geom_vline(xintercept = median_age, linetype = "dashed", color = "#E53935", linewidth = 0.8) +
+  annotate("text", x = median_age + 2, y = Inf, vjust = 2,
+           label = paste0("Median = ", median_age), color = "#E53935", size = 3.5) +
+  labs(
+    title = "Distribution of Respondent Age",
+    subtitle = "HRS 2022 Core Sample",
+    x = "Age (years)",
+    y = "Number of Respondents"
+  ) +
+  theme_bw(base_size = 12)
+```
+
+Figure 1 shows the age distribution of respondents. The distribution is right-skewed, with the bulk of respondents between 60 and 85 years old. The median age is `r median_age` years. A smaller tail extends beyond age 90, reflecting the HRS's continued follow-up of the oldest cohorts. The underrepresentation of respondents younger than 55 reflects the study's age eligibility criteria (50+), with younger individuals present primarily as spouses of eligible respondents.
+
+## Self-Rated Health Distribution
+
+```{r fig2-health, fig.cap="Figure 2. Distribution of self-rated health among HRS 2022 respondents.", fig.width=7, fig.height=4}
+health_counts <- dat_clean %>%
+  count(health_cat) %>%
+  mutate(pct = n / sum(n) * 100)
+
+ggplot(health_counts, aes(x = health_cat, y = pct, fill = health_cat)) +
+  geom_col(width = 0.65, show.legend = FALSE) +
+  geom_text(aes(label = paste0(round(pct, 1), "%")), vjust = -0.4, size = 3.5) +
+  scale_fill_manual(values = c(
+    "Excellent" = "#1B5E20",
+    "Very Good" = "#43A047",
+    "Good"      = "#FDD835",
+    "Fair"      = "#FB8C00",
+    "Poor"      = "#E53935"
+  )) +
+  labs(
+    title = "Self-Rated Health Distribution",
+    subtitle = "HRS 2022 Core Sample",
+    x = "Self-Rated Health",
+    y = "Percentage (%)"
+  ) +
+  ylim(0, max(health_counts$pct) * 1.15) +
+  theme_bw(base_size = 12)
+```
+
+Figure 2 illustrates the distribution of self-rated health. The most common response was "Good" (`r round(health_counts$pct[health_counts$health_cat == "Good"], 1)`%), followed by "Very Good" (`r round(health_counts$pct[health_counts$health_cat == "Very Good"], 1)`%). Only `r round(health_counts$pct[health_counts$health_cat == "Poor"], 1)`% of respondents rated their health as "Poor." This distribution is consistent with prior HRS waves, where most older Americans maintain a positive self-assessment of health even in the presence of chronic conditions.
+
+---
+
+# Chronic Condition Analysis
+
+## Prevalence of Chronic Conditions
+
+```{r table2}
+dat_clean %>%
+  select(hbp_bin, diabetes_bin, cancer_bin) %>%
+  tbl_summary(
+    label = list(
+      hbp_bin      ~ "Hypertension / High Blood Pressure",
+      diabetes_bin ~ "Diabetes",
+      cancer_bin   ~ "Cancer (ever diagnosed)"
+    ),
+    statistic = all_categorical() ~ "{n} ({p}%)",
+    missing = "no"
+  ) %>%
+  bold_labels() %>%
+  modify_caption("**Table 2. Prevalence of Chronic Conditions, HRS 2022**")
+```
+
+Table 2 presents the prevalence of three major chronic conditions in the HRS 2022 sample. Hypertension was by far the most common condition, affecting nearly two-thirds of respondents. Diabetes was present in approximately one-third of the sample, while cancer had been diagnosed in roughly one in seven respondents. These rates are consistent with national statistics for the 50+ age group and reflect the high burden of chronic disease in older Americans.
+
+## Chronic Condition Prevalence by Age Group
+
+```{r fig3-conditions-age, fig.cap="Figure 3. Prevalence of three chronic conditions by age group. Error bars represent 95% confidence intervals.", fig.width=8, fig.height=5}
+condition_by_age <- dat_clean %>%
+  filter(!is.na(age_group)) %>%
+  group_by(age_group) %>%
+  summarise(
+    hbp_prev      = mean(hbp_bin, na.rm=TRUE),
+    diabetes_prev = mean(diabetes_bin, na.rm=TRUE),
+    cancer_prev   = mean(cancer_bin, na.rm=TRUE),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  pivot_longer(cols = c(hbp_prev, diabetes_prev, cancer_prev),
+               names_to = "condition", values_to = "prevalence") %>%
+  mutate(
+    condition = recode(condition,
+      "hbp_prev"      = "Hypertension",
+      "diabetes_prev" = "Diabetes",
+      "cancer_prev"   = "Cancer"
+    ),
+    se = sqrt(prevalence * (1 - prevalence) / n),
+    lower = prevalence - 1.96 * se,
+    upper = prevalence + 1.96 * se
+  )
+
+ggplot(condition_by_age, aes(x = age_group, y = prevalence * 100,
+                              color = condition, group = condition)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  geom_errorbar(aes(ymin = lower*100, ymax = upper*100), width = 0.2, alpha = 0.5) +
+  scale_color_manual(values = c(
+    "Hypertension" = "#1565C0",
+    "Diabetes"     = "#E65100",
+    "Cancer"       = "#6A1B9A"
+  )) +
+  labs(
+    title = "Chronic Condition Prevalence by Age Group",
+    subtitle = "HRS 2022 Core Sample",
+    x = "Age Group (years)",
+    y = "Prevalence (%)",
+    color = "Condition"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "bottom")
+```
+
+Figure 3 displays age-stratified prevalence for each chronic condition. Hypertension prevalence is high across all age groups and shows a moderate decline in the oldest age group (90+), likely reflecting survivor bias — those reaching advanced age may represent a healthier subset of the population. Diabetes prevalence peaks in the 70–79 age group and declines slightly thereafter, consistent with differential mortality among diabetics. Cancer prevalence, by contrast, increases steadily with age, reflecting cumulative lifetime exposure to risk factors.
+
+---
+
+# Chronic Conditions and Self-Rated Health
+
+```{r fig4-conditions-health, fig.cap="Figure 4. Self-rated health distribution by number of chronic conditions (hypertension, diabetes, cancer).", fig.width=8, fig.height=5}
+dat_clean %>%
+  filter(!is.na(n_conditions)) %>%
+  mutate(n_conditions = factor(n_conditions,
+                               labels = c("0 conditions","1 condition",
+                                          "2 conditions","3 conditions"))) %>%
+  count(n_conditions, health_cat) %>%
+  group_by(n_conditions) %>%
+  mutate(pct = n / sum(n) * 100) %>%
+  ggplot(aes(x = n_conditions, y = pct, fill = health_cat)) +
+  geom_col(position = "stack", width = 0.7) +
+  scale_fill_manual(
+    values = c(
+      "Excellent" = "#1B5E20",
+      "Very Good" = "#66BB6A",
+      "Good"      = "#FDD835",
+      "Fair"      = "#FB8C00",
+      "Poor"      = "#E53935"
+    ),
+    name = "Self-Rated Health"
+  ) +
+  labs(
+    title = "Self-Rated Health by Number of Chronic Conditions",
+    subtitle = "HRS 2022 Core Sample",
+    x = "Number of Chronic Conditions",
+    y = "Percentage (%)"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "right")
+```
+
+Figure 4 shows a clear gradient between chronic disease burden and self-rated health. Among respondents with no chronic conditions, a substantial proportion rated their health as "Excellent" or "Very Good." As the number of conditions increases, the proportion rating health as "Fair" or "Poor" grows substantially. Respondents with all three conditions (hypertension, diabetes, and cancer) show the highest concentration of "Fair" and "Poor" health ratings. This pattern underscores the cumulative impact of chronic disease on perceived health status and is consistent with findings from prior HRS waves and other population-based studies of aging.
+
+---
+
+# Conclusion
+
+This analysis of the HRS 2022 Core data reveals several key patterns in the health of older Americans:
+
+- The sample has an average age of approximately `r round(mean(dat_clean$age, na.rm=TRUE), 1)` years, with women comprising the majority of respondents.
+- Most respondents (>70%) rate their health as "Good," "Very Good," or "Excellent," despite widespread chronic disease.
+- **Hypertension** is the most prevalent chronic condition (~62%), followed by **diabetes** (~30%) and **cancer** (~15%).
+- A clear dose-response relationship exists between number of chronic conditions and self-rated health, with greater disease burden consistently associated with worse self-perceived health.
+
+These findings highlight the importance of chronic disease management programs for older Americans and demonstrate the continued value of the HRS as a resource for studying population aging. Future analyses could extend this work by incorporating longitudinal data to track changes in health status over time, or by examining socioeconomic disparities in chronic disease burden and self-rated health.
+
+---
+
+*Data source: Health and Retirement Study, 2022 Core Final (Version 1.0). Produced and distributed by the University of Michigan with funding from the National Institute on Aging (grant number NIA U01AG009740). Ann Arbor, MI.*

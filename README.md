@@ -1,0 +1,85 @@
+# HRS 2022: Health Status in Older Americans
+
+This repository contains an analysis of health status and chronic disease burden in older Americans using the **Health and Retirement Study (HRS) 2022 Core data (Wave 22)**.
+
+## Study Overview
+
+The analysis has three goals:
+
+1. **Describe** the demographic composition of the HRS 2022 sample (age, sex, education)
+2. **Characterize** the distribution of self-rated health and prevalence of hypertension, diabetes, and cancer
+3. **Examine** the relationship between chronic disease burden and self-rated health
+
+## Data
+
+> **The real HRS 2022 Core data requires free registration** at <https://hrs.isr.umich.edu/data-products>. It is not included in this repository.
+
+The `data/` folder contains **synthetic CSV files** with the same structure as the real data. To regenerate them:
+
+```bash
+make data
+```
+
+**To use real data**: Download the HRS 2022 Core files from the HRS website, extract the following CSV files into `data/`:
+- `h22a_r.csv` — Section A (Background)
+- `h22c_r.csv` — Section C (Health conditions)
+- `h22pr_r.csv` — Pre-release demographics
+
+## How to Generate the Final Report
+
+### Prerequisites
+
+```r
+install.packages(c("tidyverse", "gtsummary", "knitr", "rmarkdown"))
+```
+
+### Build
+
+```bash
+make all        # generate synthetic data + render report
+# or separately:
+make data       # generate data only
+make report     # render output/HRS2022_analysis.html
+```
+
+Open `output/HRS2022_analysis.html` in any web browser.
+
+---
+
+## Repository Structure
+
+```
+.
+├── Makefile                   # Build rules — run `make all` to reproduce
+├── README.md                  # This file
+├── create_synthetic_data.R    # Generates synthetic data CSVs
+├── HRS2022_analysis.Rmd       # Main analysis document
+├── data/                      # Data directory (synthetic CSVs tracked by git)
+│   ├── h22a_r.csv             ← Section A: age
+│   ├── h22c_r.csv             ← Section C: self-rated health, chronic conditions
+│   └── h22pr_r.csv            ← Pre-release: sex, education
+└── output/                    # Generated report (created by make)
+    └── HRS2022_analysis.html
+```
+
+---
+
+## Tables
+
+| Table | Generating Code | Description |
+|-------|----------------|-------------|
+| Table 1. Sample Characteristics | `HRS2022_analysis.Rmd` → chunk **`table1`** | Age, sex, education, self-rated health |
+| Table 2. Chronic Condition Prevalence | `HRS2022_analysis.Rmd` → chunk **`table2`** | Hypertension, diabetes, cancer prevalence |
+
+## Figures
+
+| Figure | Generating Code | Description |
+|--------|----------------|-------------|
+| Figure 1. Age distribution | `HRS2022_analysis.Rmd` → chunk **`fig1-age`** | Histogram with median line |
+| Figure 2. Self-rated health | `HRS2022_analysis.Rmd` → chunk **`fig2-health`** | Bar chart by health category |
+| Figure 3. Conditions by age group | `HRS2022_analysis.Rmd` → chunk **`fig3-conditions-age`** | Prevalence trends with 95% CI |
+| Figure 4. Health by condition count | `HRS2022_analysis.Rmd` → chunk **`fig4-conditions-health`** | Stacked bar chart |
+
+---
+
+*Data source: Health and Retirement Study, 2022 Core Final (Version 1.0). University of Michigan, NIA grant U01AG009740.*
