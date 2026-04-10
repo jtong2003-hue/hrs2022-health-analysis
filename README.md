@@ -27,11 +27,25 @@ make data
 
 ## How to Generate the Final Report
 
-### Prerequisites
+### Synchronize Package Environment
+
+This project uses [`renv`](https://rstudio.github.io/renv/) to manage R package dependencies. All required packages and their exact versions are recorded in `renv.lock`.
+
+To restore the package environment:
+
+```bash
+make install
+```
+
+Or equivalently in R:
 
 ```r
-install.packages(c("tidyverse", "gtsummary", "knitr", "rmarkdown"))
+renv::restore()
 ```
+
+This will install all packages at the versions specified in `renv.lock`, ensuring reproducible results across machines.
+
+> **Note:** You need the `renv` package itself installed first. If you don't have it: `install.packages("renv")`.
 
 ### Build
 
@@ -52,6 +66,9 @@ Open `output/HRS2022_analysis.html` in any web browser.
 .
 ├── Makefile                   # Build rules — run `make all` to reproduce
 ├── README.md                  # This file
+├── .Rprofile                  # Activates renv on project load
+├── renv.lock                  # Locked package versions for reproducibility
+├── renv/                      # renv library and settings
 ├── create_synthetic_data.R    # Generates synthetic data CSVs
 ├── HRS2022_analysis.Rmd       # Main analysis document
 ├── data/                      # Data directory (synthetic CSVs tracked by git)

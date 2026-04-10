@@ -8,9 +8,13 @@
 RSCRIPT = Rscript
 OUTPUT  = output
 
-.PHONY: all report data clean
+.PHONY: all install report data clean
 
 all: data report
+
+## install: restore R package environment from renv.lock
+install:
+	$(RSCRIPT) -e "renv::restore()"
 
 ## data: generate synthetic HRS 2022 CSV files
 data: data/h22a_r.csv data/h22c_r.csv data/h22pr_r.csv
