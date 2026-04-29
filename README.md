@@ -27,36 +27,73 @@ make data
 
 ## How to Generate the Final Report
 
-### Synchronize Package Environment
+There are **two equivalent ways** to reproduce the report. Pick whichever is more convenient:
 
-This project uses [`renv`](https://rstudio.github.io/renv/) to manage R package dependencies. All required packages and their exact versions are recorded in `renv.lock`.
+| Approach | Requires on your machine | Output location |
+|----------|--------------------------|-----------------|
+| **A. Docker** (recommended for graders / new machines) | only Docker | `report/HRS2022_analysis.html` |
+| **B. Local R** | R 4.5.2 + `renv` | `output/HRS2022_analysis.html` |
 
-To restore the package environment:
+---
 
-```bash
-make install
-```
+### A. Reproduce with Docker (recommended)
 
-Or equivalently in R:
+A pre-built image is published on DockerHub:
+**<https://hub.docker.com/r/jtong2003/hrs2022-health-analysis>**
 
-```r
-renv::restore()
-```
+You do **not** need R, RStudio, or any R packages installed locally — just Docker.
 
-This will install all packages at the versions specified in `renv.lock`, ensuring reproducible results across machines.
-
-> **Note:** You need the `renv` package itself installed first. If you don't have it: `install.packages("renv")`.
-
-### Build
+#### Run (Mac / Linux)
 
 ```bash
-make all        # generate synthetic data + render report
-# or separately:
-make data       # generate data only
-make report     # render output/HRS2022_analysis.html
+make docker
 ```
 
-Open `output/HRS2022_analysis.html` in any web browser.
+#### Run (Windows, git-bash)
+
+```bash
+make docker-win
+```
+
+> Why two targets? Windows git-bash rewrites Unix-style bind-mount paths.
+> The `docker-win` target adds a leading `/` to disable that translation.
+
+Either target will:
+
+1. Create an empty `./report/` directory in the project root.
+2. Pull `jtong2003/hrs2022-health-analysis:latest` from DockerHub (first run only).
+3. Run the container, which regenerates the synthetic data and renders the
+   report into the mounted `./report/` directory.
+
+When the command finishes, open **`report/HRS2022_analysis.html`** in any web browser.
+
+These targets have **no Make prerequisites** — a fresh clone can run `make docker` immediately, without first building the image.
+
+#### (Optional) Build the image locally
+
+Only needed if you have modified the `Dockerfile`. End users should not need this.
+
+```bash
+make docker-build
+# or, equivalently:
+docker build -t jtong2003/hrs2022-health-analysis:latest .
+```
+
+---
+
+### B. Reproduce with local R
+
+This project uses [`renv`](https://rstudio.github.io/renv/) to lock R package
+versions. All packages are recorded in `renv.lock`.
+
+```bash
+make install    # restore packages from renv.lock (first time only)
+make all        # generate synthetic data + render the report
+```
+
+Output is written to `output/HRS2022_analysis.html`.
+
+> You need `renv` itself installed first: `install.packages("renv")`.
 
 ---
 
@@ -64,18 +101,22 @@ Open `output/HRS2022_analysis.html` in any web browser.
 
 ```
 .
-├── Makefile                   # Build rules — run `make all` to reproduce
+├── Dockerfile                 # Builds the reproducible image
+├── .dockerignore              # Excludes large/local files from the build context
+├── Makefile                   # Build rules (local + docker targets)
 ├── README.md                  # This file
 ├── .Rprofile                  # Activates renv on project load
 ├── renv.lock                  # Locked package versions for reproducibility
-├── renv/                      # renv library and settings
+├── renv/                      # renv settings + activate.R (library is gitignored)
 ├── create_synthetic_data.R    # Generates synthetic data CSVs
 ├── HRS2022_analysis.Rmd       # Main analysis document
 ├── data/                      # Data directory (synthetic CSVs tracked by git)
 │   ├── h22a_r.csv             ← Section A: age
 │   ├── h22c_r.csv             ← Section C: self-rated health, chronic conditions
 │   └── h22pr_r.csv            ← Pre-release: sex, education
-└── output/                    # Generated report (created by make)
+├── output/                    # Generated report — local R workflow
+│   └── HRS2022_analysis.html
+└── report/                    # Generated report — Docker workflow (bind-mounted)
     └── HRS2022_analysis.html
 ```
 

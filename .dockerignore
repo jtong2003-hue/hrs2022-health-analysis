@@ -1,0 +1,21 @@
+# Keep the Docker build context small and reproducible.
+.git
+.gitignore
+.Rproj.user
+.Rhistory
+.RData
+*.Rproj
+.DS_Store
+
+# Anything generated locally — the container regenerates these.
+output/
+report/
+*_cache/
+*_files/
+
+# renv: ship the lockfile + activate.R only, not the local library.
+renv/library/
+renv/staging/
+renv/local/
+renv/python/
+renv/sandbox/
